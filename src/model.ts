@@ -41,6 +41,8 @@ export interface SelectionInfo {
   rotation: number;
   chamfer: ChamferData | null;
   isComponent: boolean;
+  /** for frame-bg shapes: true when the owning board no longer exists */
+  bgOrphaned?: boolean;
   bounds: { x: number; y: number; width: number; height: number };
 }
 

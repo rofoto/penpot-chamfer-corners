@@ -173,6 +173,7 @@ details button {
   border-radius: 6px;
   background: var(--panel);
   border: 1px solid var(--border);
+  white-space: pre-line;
 }
 
 .notice.warn {

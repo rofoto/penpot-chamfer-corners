@@ -41,7 +41,11 @@ function setInputs(cuts: Cuts): void {
 function describeChamfer(shape: SelectionInfo): string {
   const data = shape.chamfer;
   if (!data) return '';
-  if (data.kind === 'frame-bg') return ' · chamfer background';
+  if (data.kind === 'frame-bg') {
+    return shape.bgOrphaned
+      ? ' · chamfer background (orphaned)'
+      : ' · chamfer background';
+  }
   const cuts = data.cuts;
   return ` · chamfer ${data.kind} tl=${cuts.tl} tr=${cuts.tr} br=${cuts.br} bl=${cuts.bl}`;
 }
@@ -66,7 +70,7 @@ function renderSelection(selection: SelectionInfo[]): void {
   if (applyButton) applyButton.disabled = selection.length === 0;
 
   const removable = selection.some(
-    (s) => s.chamfer && s.chamfer.kind !== 'frame-bg',
+    (s) => s.chamfer && (s.chamfer.kind !== 'frame-bg' || s.bgOrphaned),
   );
   if (removeButton) removeButton.hidden = !removable;
 

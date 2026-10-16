@@ -9,6 +9,8 @@ import type {
 import { chamferCommands } from './geometry';
 import {
   applyToShape,
+  countOrphanedBackgrounds,
+  findShapeById,
   PLUGIN_KEY,
   readChamfer,
   regenerateIfOwner,
@@ -34,13 +36,18 @@ function need<T>(value: T | null | undefined, what: string): T {
 
 function toInfo(shape: Shape): SelectionInfo {
   const bounds = shape.bounds;
+  const chamfer = readChamfer(shape);
   return {
     id: shape.id,
     name: shape.name,
     type: shape.type,
     rotation: shape.rotation,
-    chamfer: readChamfer(shape),
+    chamfer,
     isComponent: shape.isComponentInstance(),
+    bgOrphaned:
+      chamfer?.kind === 'frame-bg'
+        ? findShapeById(chamfer.ownerId) === null
+        : undefined,
     bounds: {
       x: bounds.x,
       y: bounds.y,
@@ -57,9 +64,16 @@ function selectionInfo(): SelectionInfo[] {
 penpot.ui.onMessage((raw: unknown) => {
   const message = raw as UiToPlugin;
   switch (message.type) {
-    case 'ready':
+    case 'ready': {
       send({ type: 'init', theme: penpot.theme, selection: selectionInfo() });
+      const orphans = countOrphanedBackgrounds();
+      if (orphans > 0) {
+        sendNotice('info', [
+          `${orphans} orphaned chamfer background${orphans === 1 ? '' : 's'} on this page (their boards were deleted) — select one and use Remove to delete it`,
+        ]);
+      }
       break;
+    }
     case 'run-smoke':
       void runSmoke();
       break;

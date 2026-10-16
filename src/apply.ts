@@ -52,6 +52,27 @@ export function findShapeById(id: string): Shape | null {
   return findById(page.root, id);
 }
 
+/**
+ * Counts chamfer background paths on the current page whose owner
+ * board no longer exists.
+ */
+export function countOrphanedBackgrounds(): number {
+  const page = penpot.currentPage;
+  if (!page) return 0;
+  let count = 0;
+  const walk = (shape: Shape): void => {
+    const data = readChamfer(shape);
+    if (data?.kind === 'frame-bg' && !findShapeById(data.ownerId)) {
+      count += 1;
+    }
+    if ('children' in shape && shape.children) {
+      for (const child of shape.children) walk(child);
+    }
+  };
+  walk(page.root);
+  return count;
+}
+
 export interface ApplyOutcome {
   /** shape to re-select afterwards (the path after flatten) */
   shape: Shape;
@@ -76,6 +97,14 @@ export function applyToShape(shape: Shape, cuts: Cuts): ApplyOutcome {
       ],
     };
   }
+  const bounds = shape.bounds;
+  if (bounds.width < 0.01 || bounds.height < 0.01) {
+    return {
+      shape,
+      ok: false,
+      messages: [`“${shape.name}” has zero size — nothing to chamfer`],
+    };
+  }
   switch (shape.type) {
     case 'rectangle':
       return applyRect(shape as Rectangle, cuts);
@@ -94,6 +123,17 @@ export function applyToShape(shape: Shape, cuts: Cuts): ApplyOutcome {
   }
 }
 
+function clampNotice(requested: Cuts, clamped: Cuts): string | null {
+  const keys = ['tl', 'tr', 'br', 'bl'] as const;
+  const changed = keys.filter(
+    (k) => Math.abs(requested[k] - clamped[k]) > 0.005,
+  );
+  if (changed.length === 0) return null;
+  return `cuts clamped to fit: ${changed
+    .map((k) => `${k} ${requested[k]}→${clamped[k]}`)
+    .join(', ')}`;
+}
+
 function applyRect(rect: Rectangle, cuts: Cuts): ApplyOutcome {
   const clamped = clampCuts(rect.bounds.width, rect.bounds.height, cuts);
   const flattened = penpot.flatten([rect])[0];
@@ -105,11 +145,10 @@ function applyRect(rect: Rectangle, cuts: Cuts): ApplyOutcome {
     };
   }
   finishPathWrite(flattened, clamped);
-  return {
-    shape: flattened,
-    ok: true,
-    messages: [`chamfered “${flattened.name}”`],
-  };
+  const messages = [`chamfered “${flattened.name}”`];
+  const clampedMsg = clampNotice(cuts, clamped);
+  if (clampedMsg) messages.push(clampedMsg);
+  return { shape: flattened, ok: true, messages };
 }
 
 function applyExistingPath(path: Path, cuts: Cuts): ApplyOutcome {
@@ -136,6 +175,8 @@ function applyExistingPath(path: Path, cuts: Cuts): ApplyOutcome {
   if (manualEdit) {
     messages.push(`manual path edits on “${path.name}” were overwritten`);
   }
+  const clampedMsg = clampNotice(cuts, clamped);
+  if (clampedMsg) messages.push(clampedMsg);
   return { shape: path, ok: true, messages };
 }
 
@@ -216,6 +257,8 @@ function applyBoard(board: Board, cuts: Cuts): ApplyOutcome {
       `“${board.name}” clips content — children still clip to the square board, not the chamfer shape`,
     );
   }
+  const clampedMsg = clampNotice(cuts, clamped);
+  if (clampedMsg) messages.push(clampedMsg);
   messages.push(`chamfered board “${board.name}”`);
   return { shape: board, ok: true, messages };
 }
@@ -287,12 +330,31 @@ export function removeFromShape(shape: Shape): RemoveOutcome {
         messages: [`removed chamfer background from “${board.name}”`],
       };
     }
-    case 'frame-bg':
+    case 'frame-bg': {
+      if (shape.type !== 'path') {
+        return {
+          shape,
+          ok: false,
+          messages: [`“${shape.name}” is not a chamfer background path`],
+        };
+      }
+      const owner = findShapeById(data.ownerId);
+      if (owner) {
+        return {
+          shape,
+          ok: false,
+          messages: [
+            `“${shape.name}” backs “${owner.name}” — select the board and use Remove there`,
+          ],
+        };
+      }
+      if ('remove' in shape) shape.remove();
       return {
-        shape,
-        ok: false,
-        messages: [`select the board, not its chamfer background`],
+        shape: null,
+        ok: true,
+        messages: [`deleted orphaned chamfer background “${shape.name}”`],
       };
+    }
   }
 }
 
@@ -312,13 +374,18 @@ export function regenerateIfOwner(shape: Shape): boolean {
     if (commandsSignature(shape.commands) !== data.sig) return false;
     const expected = chamferCommands(boundsOf(shape), data.cuts);
     if (sameCommands(shape.commands, expected)) return false;
-    shape.commands = expected;
-    writeChamfer(shape, {
-      v: 1,
-      kind: 'rect',
-      cuts: data.cuts,
-      sig: commandsSignature(expected),
-    });
+    const block = penpot.history.undoBlockBegin();
+    try {
+      shape.commands = expected;
+      writeChamfer(shape, {
+        v: 1,
+        kind: 'rect',
+        cuts: data.cuts,
+        sig: commandsSignature(expected),
+      });
+    } finally {
+      penpot.history.undoBlockFinish(block);
+    }
     return true;
   }
 
@@ -338,17 +405,22 @@ export function regenerateIfOwner(shape: Shape): boolean {
     const expected = chamferCommands(boundsOf(shape), data.cuts);
     if (sameCommands(bg.commands, expected)) return false;
     const bounds = boundsOf(shape);
-    bg.x = bounds.x;
-    bg.y = bounds.y;
-    bg.resize(bounds.width, bounds.height);
-    bg.commands = expected;
-    writeChamfer(bg, {
-      v: 1,
-      kind: 'frame-bg',
-      ownerId: shape.id,
-      cuts: data.cuts,
-      sig: commandsSignature(expected),
-    });
+    const block = penpot.history.undoBlockBegin();
+    try {
+      bg.x = bounds.x;
+      bg.y = bounds.y;
+      bg.resize(bounds.width, bounds.height);
+      bg.commands = expected;
+      writeChamfer(bg, {
+        v: 1,
+        kind: 'frame-bg',
+        ownerId: shape.id,
+        cuts: data.cuts,
+        sig: commandsSignature(expected),
+      });
+    } finally {
+      penpot.history.undoBlockFinish(block);
+    }
     return true;
   }
 
