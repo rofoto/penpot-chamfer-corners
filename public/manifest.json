@@ -1,0 +1,8 @@
+{
+  "name": "Chamfer Corners",
+  "description": "Add chamfered (beveled) corners to rectangles and boards, with per-corner cut distances",
+  "version": 2,
+  "code": "plugin.js",
+  "icon": "icon.png",
+  "permissions": ["content:read", "content:write"]
+}

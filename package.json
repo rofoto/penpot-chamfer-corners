@@ -1,0 +1,25 @@
+{
+  "name": "chamfer-corners-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:plugin": "esbuild src/plugin.ts --bundle --outfile=public/plugin.js --format=esm --target=es2020 --watch",
+    "dev:ui": "vite",
+    "dev": "concurrently -k -n plugin,ui -c blue,green \"npm:dev:plugin\" \"npm:dev:ui\"",
+    "build:plugin": "esbuild src/plugin.ts --bundle --outfile=public/plugin.js --format=esm --target=es2020 --minify",
+    "build:ui": "vite build",
+    "build": "npm run build:plugin && npm run build:ui",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@penpot/plugin-types": "^1.4.2",
+    "concurrently": "^10.0.6",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5"
+  }
+}

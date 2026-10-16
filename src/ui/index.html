@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chamfer Corners</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main id="app">
+      <h1>Chamfer Corners</h1>
+
+      <section aria-labelledby="selection-heading">
+        <h2 id="selection-heading">Selection</h2>
+        <ul id="selection-list" class="selection-list"></ul>
+      </section>
+
+      <section aria-labelledby="cuts-heading">
+        <h2 id="cuts-heading">Cut distance (px)</h2>
+        <div class="cuts-grid">
+          <label
+            >TL
+            <input
+              id="cut-tl"
+              type="number"
+              min="0"
+              step="1"
+              value="16"
+              aria-label="Top-left cut"
+          /></label>
+          <label
+            >TR
+            <input
+              id="cut-tr"
+              type="number"
+              min="0"
+              step="1"
+              value="16"
+              aria-label="Top-right cut"
+          /></label>
+          <label
+            >BL
+            <input
+              id="cut-bl"
+              type="number"
+              min="0"
+              step="1"
+              value="16"
+              aria-label="Bottom-left cut"
+          /></label>
+          <label
+            >BR
+            <input
+              id="cut-br"
+              type="number"
+              min="0"
+              step="1"
+              value="16"
+              aria-label="Bottom-right cut"
+          /></label>
+        </div>
+        <div class="actions">
+          <button id="apply-button" type="button" disabled>
+            Apply chamfer
+          </button>
+          <button id="remove-button" type="button" class="secondary" hidden>
+            Remove chamfer
+          </button>
+        </div>
+      </section>
+
+      <details>
+        <summary>Diagnostics</summary>
+        <button id="smoke-button" type="button">Run API smoke test</button>
+        <ul id="smoke-list" class="probe-list"></ul>
+      </details>
+
+      <div id="notice" class="notice" hidden></div>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

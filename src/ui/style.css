@@ -1,0 +1,188 @@
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #18181b;
+  --muted: #71717a;
+  --border: #e4e4e7;
+  --panel: #f4f4f5;
+  --accent: #2c5282;
+  --accent-fg: #ffffff;
+  --ok: #276749;
+  --warn: #975a16;
+  --error: #9b2c2c;
+}
+
+:root[data-theme='dark'] {
+  --bg: #1e1e1e;
+  --fg: #f4f4f5;
+  --muted: #a1a1aa;
+  --border: #3f3f46;
+  --panel: #27272a;
+  --accent: #63b3ed;
+  --accent-fg: #1a365d;
+  --ok: #68d391;
+  --warn: #f6ad55;
+  --error: #fc8181;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font:
+    13px/1.45 system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+}
+
+#app {
+  padding: 14px 16px 20px;
+}
+
+h1 {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+h2 {
+  margin: 14px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.selection-list,
+.probe-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.selection-list li,
+.probe-list li {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+
+.selection-list li:last-child,
+.probe-list li:last-child {
+  border-bottom: none;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.probe-list li.ok {
+  color: var(--ok);
+}
+
+.probe-list li.fail {
+  color: var(--error);
+}
+
+button {
+  appearance: none;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 12px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:hover {
+  filter: brightness(1.08);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--border);
+}
+
+.cuts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.cuts-grid label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+input[type='number'] {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--fg);
+  font: inherit;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+details {
+  margin-top: 16px;
+}
+
+summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+details button {
+  margin-top: 8px;
+}
+
+.notice {
+  margin-top: 14px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+
+.notice.warn {
+  color: var(--warn);
+}
+
+.notice.error {
+  color: var(--error);
+}
+
+.notice.info {
+  color: var(--muted);
+}
