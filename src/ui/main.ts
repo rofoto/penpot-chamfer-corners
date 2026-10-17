@@ -247,10 +247,23 @@ smokeButton?.addEventListener('click', () => {
 });
 
 for (const key of CORNERS) {
-  cutInputs[key]?.addEventListener('input', () => {
+  const input = cutInputs[key];
+  input?.addEventListener('input', () => {
     persistState();
     scheduleLive();
   });
+  input?.addEventListener(
+    'wheel',
+    (event) => {
+      if (document.activeElement !== input) return;
+      event.preventDefault();
+      const current = Number(input.value) || 0;
+      const next = Math.max(0, current - Math.sign(event.deltaY));
+      input.value = String(next);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    },
+    { passive: false },
+  );
   enableInputs[key]?.addEventListener('change', () => {
     syncEnabled();
     persistState();
