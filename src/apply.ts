@@ -263,6 +263,56 @@ function applyBoard(board: Board, cuts: Cuts): ApplyOutcome {
   return { shape: board, ok: true, messages };
 }
 
+/**
+ * Creates an in-place copy of a shape for "duplicate" mode.
+ * Rectangles and chamfered paths are copied with full visual fidelity;
+ * other types are rejected with a hint to duplicate manually.
+ */
+export function duplicateForChamfer(
+  shape: Shape,
+): { shape: Shape } | { error: string } {
+  if (shape.type === 'rectangle') {
+    const rect = shape;
+    const copy = penpot.createRectangle();
+    copy.name = rect.name;
+    const b = boundsOf(rect);
+    copy.x = b.x;
+    copy.y = b.y;
+    copy.resize(b.width, b.height);
+    if (Array.isArray(rect.fills)) copy.fills = [...rect.fills];
+    copy.strokes = [...rect.strokes];
+    copy.opacity = rect.opacity;
+    const parent = rect.parent;
+    if (parent && 'insertChild' in parent) {
+      parent.insertChild(rect.parentIndex + 1, copy);
+    }
+    return { shape: copy };
+  }
+  if (shape.type === 'path') {
+    const data = readChamfer(shape);
+    if (!data || data.kind !== 'rect') {
+      return {
+        error: `“${shape.name}” is a plain path — duplicate mode supports rectangles and chamfered paths`,
+      };
+    }
+    const copy = penpot.createPath();
+    copy.name = shape.name;
+    const parent = shape.parent;
+    if (parent && 'insertChild' in parent) {
+      parent.insertChild(shape.parentIndex + 1, copy);
+    }
+    if (Array.isArray(shape.fills)) copy.fills = [...shape.fills];
+    copy.strokes = [...shape.strokes];
+    copy.opacity = shape.opacity;
+    copy.commands = shape.commands;
+    copy.setPluginData(PLUGIN_KEY, JSON.stringify(data));
+    return { shape: copy };
+  }
+  return {
+    error: `duplicate mode supports rectangles and chamfered paths only — for “${shape.name}” duplicate it manually (Ctrl+D) or turn off duplicate`,
+  };
+}
+
 export interface RemoveOutcome {
   /** shape to re-select, or null when it was deleted */
   shape: Shape | null;

@@ -126,12 +126,23 @@ button.secondary {
   gap: 8px;
 }
 
-.cuts-grid label {
+.cut-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cut-head {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   color: var(--muted);
   font-weight: 600;
+}
+
+input[type='checkbox'] {
+  accent-color: var(--accent);
+  margin: 0;
 }
 
 input[type='number'] {
@@ -142,6 +153,35 @@ input[type='number'] {
   background: var(--panel);
   color: var(--fg);
   font: inherit;
+}
+
+input[type='number']:disabled {
+  opacity: 0.45;
+}
+
+.presets {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+button.small {
+  padding: 3px 10px;
+  font-weight: 500;
+}
+
+.options {
+  margin-top: 10px;
+}
+
+.options label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  margin-top: 4px;
+  cursor: pointer;
 }
 
 .actions {

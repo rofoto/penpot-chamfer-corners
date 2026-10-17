@@ -10,6 +10,7 @@ import { chamferCommands } from './geometry';
 import {
   applyToShape,
   countOrphanedBackgrounds,
+  duplicateForChamfer,
   findShapeById,
   PLUGIN_KEY,
   readChamfer,
@@ -17,7 +18,7 @@ import {
   removeFromShape,
 } from './apply';
 
-penpot.ui.open('Chamfer Corners', '', { width: 340, height: 560 });
+penpot.ui.open('Chamfer Corners', '', { width: 340, height: 640 });
 
 function send(message: PluginToUi): void {
   penpot.ui.sendMessage(message);
@@ -78,7 +79,7 @@ penpot.ui.onMessage((raw: unknown) => {
       void runSmoke();
       break;
     case 'apply':
-      handleApply(message.cuts);
+      handleApply(message.cuts, message.duplicate === true);
       break;
     case 'remove':
       handleRemove();
@@ -93,7 +94,7 @@ function sendNotice(
   send({ type: 'notice', level, text: lines.join('\n') });
 }
 
-function handleApply(cuts: Cuts): void {
+function handleApply(cuts: Cuts, duplicate: boolean): void {
   const selection = penpot.selection;
   if (selection.length === 0) {
     sendNotice('info', ['Nothing selected']);
@@ -105,7 +106,16 @@ function handleApply(cuts: Cuts): void {
   let anyOk = false;
   try {
     for (const shape of selection) {
-      const outcome = applyToShape(shape, cuts);
+      let target: Shape = shape;
+      if (duplicate) {
+        const copied = duplicateForChamfer(shape);
+        if ('error' in copied) {
+          messages.push(copied.error);
+          continue;
+        }
+        target = copied.shape;
+      }
+      const outcome = applyToShape(target, cuts);
       messages.push(...outcome.messages);
       if (outcome.ok) {
         anyOk = true;

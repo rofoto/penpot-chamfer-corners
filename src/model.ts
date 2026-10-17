@@ -65,6 +65,8 @@ export interface RunSmokeMessage {
 export interface ApplyMessage {
   type: 'apply';
   cuts: Cuts;
+  /** chamfer a copy instead of replacing the original (rects & chamfered paths) */
+  duplicate?: boolean;
 }
 
 export interface RemoveMessage {

@@ -18,8 +18,11 @@
       <section aria-labelledby="cuts-heading">
         <h2 id="cuts-heading">Cut distance (px)</h2>
         <div class="cuts-grid">
-          <label
-            >TL
+          <label class="cut-cell">
+            <span class="cut-head">
+              <input type="checkbox" id="en-tl" checked aria-label="Enable top-left" />
+              TL
+            </span>
             <input
               id="cut-tl"
               type="number"
@@ -27,9 +30,13 @@
               step="1"
               value="16"
               aria-label="Top-left cut"
-          /></label>
-          <label
-            >TR
+            />
+          </label>
+          <label class="cut-cell">
+            <span class="cut-head">
+              <input type="checkbox" id="en-tr" checked aria-label="Enable top-right" />
+              TR
+            </span>
             <input
               id="cut-tr"
               type="number"
@@ -37,9 +44,13 @@
               step="1"
               value="16"
               aria-label="Top-right cut"
-          /></label>
-          <label
-            >BL
+            />
+          </label>
+          <label class="cut-cell">
+            <span class="cut-head">
+              <input type="checkbox" id="en-bl" checked aria-label="Enable bottom-left" />
+              BL
+            </span>
             <input
               id="cut-bl"
               type="number"
@@ -47,9 +58,13 @@
               step="1"
               value="16"
               aria-label="Bottom-left cut"
-          /></label>
-          <label
-            >BR
+            />
+          </label>
+          <label class="cut-cell">
+            <span class="cut-head">
+              <input type="checkbox" id="en-br" checked aria-label="Enable bottom-right" />
+              BR
+            </span>
             <input
               id="cut-br"
               type="number"
@@ -57,7 +72,25 @@
               step="1"
               value="16"
               aria-label="Bottom-right cut"
-          /></label>
+            />
+          </label>
+        </div>
+        <div class="presets">
+          <span class="muted">Presets</span>
+          <button type="button" data-preset="8" class="secondary small">8</button>
+          <button type="button" data-preset="16" class="secondary small">16</button>
+          <button type="button" data-preset="24" class="secondary small">24</button>
+          <button type="button" data-preset="32" class="secondary small">32</button>
+        </div>
+        <div class="options">
+          <label>
+            <input type="checkbox" id="duplicate" />
+            Duplicate shape instead of replacing it
+          </label>
+          <label>
+            <input type="checkbox" id="live" />
+            Live preview (applies while you type)
+          </label>
         </div>
         <div class="actions">
           <button id="apply-button" type="button" disabled>
