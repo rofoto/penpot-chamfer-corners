@@ -114,3 +114,202 @@ export function sameCommands(
   }
   return true;
 }
+
+/* ------------------------------------------------------------------ */
+/* Arbitrary straight-line paths                                       */
+/* ------------------------------------------------------------------ */
+
+export interface PolyPoint {
+  x: number;
+  y: number;
+}
+
+export type ExtractPolygonResult =
+  | { ok: true; points: PolyPoint[]; closed: boolean }
+  | { ok: false; error: string };
+
+const POINT_EPS = 0.01;
+
+const samePoint = (a: PolyPoint, b: PolyPoint): boolean =>
+  Math.abs(a.x - b.x) <= POINT_EPS && Math.abs(a.y - b.y) <= POINT_EPS;
+
+/**
+ * Parses a command list into a straight-line polygon.
+ * Rejects curves, arcs, multiple subpaths and other command types.
+ * Closedness comes from a trailing close-path or from the last point
+ * coinciding with the first.
+ */
+export function extractPolygon(commands: PathCommand[]): ExtractPolygonResult {
+  if (commands.length < 2) {
+    return { ok: false, error: 'path is empty or a single point' };
+  }
+  const first = commands[0];
+  if (
+    !first ||
+    first.command !== 'move-to' ||
+    first.params?.x === undefined ||
+    first.params?.y === undefined
+  ) {
+    return { ok: false, error: 'path does not start with a move-to' };
+  }
+  const points: PolyPoint[] = [{ x: first.params.x, y: first.params.y }];
+  let closed = false;
+
+  for (let i = 1; i < commands.length; i++) {
+    const cmd = commands[i];
+    if (!cmd) continue;
+    if (cmd.command === 'close-path') {
+      if (i !== commands.length - 1) {
+        return { ok: false, error: 'close-path appears before the end of the path' };
+      }
+      closed = true;
+      continue;
+    }
+    if (closed) {
+      return { ok: false, error: 'path has commands after close-path' };
+    }
+    if (cmd.command === 'move-to') {
+      return {
+        ok: false,
+        error: "multi-part paths (several subpaths) aren't supported",
+      };
+    }
+    if (
+      cmd.command !== 'line-to' ||
+      cmd.params?.x === undefined ||
+      cmd.params?.y === undefined
+    ) {
+      return {
+        ok: false,
+        error: `“${cmd.command}” segments aren't supported — only straight lines`,
+      };
+    }
+    const p = { x: cmd.params.x, y: cmd.params.y };
+    const last = points[points.length - 1];
+    if (last && !samePoint(last, p)) {
+      points.push(p);
+    }
+  }
+
+  const head = points[0];
+  const tail = points[points.length - 1];
+  if (!closed && head && tail && samePoint(head, tail)) {
+    closed = true;
+    points.pop();
+  }
+  if (points.length < 2) {
+    return { ok: false, error: 'path has fewer than 2 distinct points' };
+  }
+  if (closed && points.length < 3) {
+    return { ok: false, error: 'a closed path needs at least 3 points' };
+  }
+  return { ok: true, points, closed };
+}
+
+/**
+ * Rebuilds plain polygon commands from points (used to restore originals).
+ */
+export function polygonCommands(
+  points: PolyPoint[],
+  closed: boolean,
+): PathCommand[] {
+  const [head, ...tail] = points;
+  if (!head) return [];
+  return [
+    { command: 'move-to', params: { x: head.x, y: head.y } },
+    ...tail.map(
+      (p): PathCommand => ({ command: 'line-to', params: { x: p.x, y: p.y } }),
+    ),
+    ...(closed ? ([{ command: 'close-path' }] as PathCommand[]) : []),
+  ];
+}
+
+/**
+ * Chamfers every vertex of a straight-line polygon with a uniform cut.
+ * Each vertex is replaced by two points along its adjacent edges; the
+ * cut on an edge is capped so neighbouring chamfers never overlap.
+ * Open-path endpoints are left untouched.
+ */
+export function chamferPolygon(
+  points: PolyPoint[],
+  closed: boolean,
+  cut: number,
+): PathCommand[] {
+  const n = points.length;
+  const norm = Number.isFinite(cut) && cut > 0 ? cut : 0;
+
+  const out: PolyPoint[] = [];
+  const push = (p: PolyPoint): void => {
+    const last = out[out.length - 1];
+    if (last && samePoint(last, p)) return;
+    out.push(p);
+  };
+
+  for (let i = 0; i < n; i++) {
+    const curr = points[i];
+    if (!curr) continue;
+    if (norm === 0 || (!closed && (i === 0 || i === n - 1))) {
+      push(curr);
+      continue;
+    }
+    const prevIdx = (i - 1 + n) % n;
+    const nextIdx = (i + 1) % n;
+    const prev = points[prevIdx];
+    const next = points[nextIdx];
+    if (!prev || !next) {
+      push(curr);
+      continue;
+    }
+    const distPrev = Math.hypot(curr.x - prev.x, curr.y - prev.y);
+    const distNext = Math.hypot(next.x - curr.x, next.y - curr.y);
+    // an edge shared with an untouched open-path endpoint belongs to
+    // this vertex alone, so it may use the full leg length
+    const sharePrev = closed || prevIdx !== 0 ? 0.5 : 1;
+    const shareNext = closed || nextIdx !== n - 1 ? 0.5 : 1;
+    const offPrev = distPrev > POINT_EPS ? Math.min(norm, distPrev * sharePrev) : 0;
+    const offNext = distNext > POINT_EPS ? Math.min(norm, distNext * shareNext) : 0;
+    if (offPrev <= 0 && offNext <= 0) {
+      push(curr);
+      continue;
+    }
+    if (offPrev > 0 && distPrev > POINT_EPS) {
+      push({
+        x: curr.x + ((prev.x - curr.x) / distPrev) * offPrev,
+        y: curr.y + ((prev.y - curr.y) / distPrev) * offPrev,
+      });
+    }
+    if (offNext > 0 && distNext > POINT_EPS) {
+      push({
+        x: curr.x + ((next.x - curr.x) / distNext) * offNext,
+        y: curr.y + ((next.y - curr.y) / distNext) * offNext,
+      });
+    }
+  }
+
+  if (closed) {
+    const head = out[0];
+    const tail = out[out.length - 1];
+    if (head && tail && out.length > 1 && samePoint(head, tail)) {
+      out.pop();
+    }
+  }
+  return polygonCommands(out, closed);
+}
+
+/**
+ * Maps stored original polygon points into a new bounding box
+ * (translate + scale), so resizes/moves re-chamfer from the original
+ * geometry instead of double-chamfering the current commands.
+ */
+export function mapPointsToBounds(
+  pts: Array<[number, number]>,
+  orig: ChamferBounds,
+  next: ChamferBounds,
+): PolyPoint[] {
+  const sx = orig.width > EPS ? next.width / orig.width : 1;
+  const sy = orig.height > EPS ? next.height / orig.height : 1;
+  return pts.map(([x, y]) => ({
+    x: next.x + (x - orig.x) * sx,
+    y: next.y + (y - orig.y) * sy,
+  }));
+}

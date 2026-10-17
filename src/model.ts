@@ -32,7 +32,24 @@ export interface FrameBgData {
   sig?: string;
 }
 
-export type ChamferData = RectChamferData | FrameChamferData | FrameBgData;
+export interface PathChamferData {
+  v: 1;
+  kind: 'path';
+  /** uniform cut distance applied to every corner */
+  cut: number;
+  /** original polygon vertices (absolute page coords, before chamfering) */
+  pts: Array<[number, number]>;
+  closed: boolean;
+  /** bounding box of the original polygon, used to remap on resize */
+  origBounds: { x: number; y: number; width: number; height: number };
+  sig?: string;
+}
+
+export type ChamferData =
+  | RectChamferData
+  | FrameChamferData
+  | FrameBgData
+  | PathChamferData;
 
 export interface SelectionInfo {
   id: string;
@@ -65,6 +82,8 @@ export interface RunSmokeMessage {
 export interface ApplyMessage {
   type: 'apply';
   cuts: Cuts;
+  /** uniform cut for arbitrary paths */
+  uniform?: number;
   /** chamfer a copy instead of replacing the original (rects & chamfered paths) */
   duplicate?: boolean;
 }

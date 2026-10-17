@@ -2,8 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { Cuts } from './model';
 import {
   chamferCommands,
+  chamferPolygon,
   clampCuts,
   commandsSignature,
+  extractPolygon,
+  mapPointsToBounds,
+  polygonCommands,
   sameCommands,
 } from './geometry';
 
@@ -159,5 +163,188 @@ describe('signature helpers', () => {
     expect(sameCommands(a, b)).toBe(true);
     const c = chamferCommands({ ...bounds, x: 12 }, cuts(5, 5, 5, 5));
     expect(sameCommands(a, c)).toBe(false);
+  });
+});
+
+describe('extractPolygon', () => {
+  const line = (x: number, y: number) =>
+    ({ command: 'line-to' as const, params: { x, y } }) as const;
+  const move = (x: number, y: number) =>
+    ({ command: 'move-to' as const, params: { x, y } }) as const;
+
+  it('infers closedness from a point list that returns to the start', () => {
+    const result = extractPolygon([
+      move(0, 0),
+      line(100, 0),
+      line(100, 60),
+      line(0, 60),
+      line(0, 0),
+    ]);
+    expect(result).toEqual({
+      ok: true,
+      closed: true,
+      points: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 60 },
+        { x: 0, y: 60 },
+      ],
+    });
+  });
+
+  it('honors an explicit close-path and drops it from the points', () => {
+    const result = extractPolygon([
+      move(0, 0),
+      line(10, 0),
+      line(10, 10),
+      { command: 'close-path' },
+    ]);
+    expect(result.ok && result.closed).toBe(true);
+    expect(result.ok && result.points).toHaveLength(3);
+  });
+
+  it('keeps open polylines open', () => {
+    const result = extractPolygon([move(0, 0), line(50, 0), line(50, 50)]);
+    expect(result.ok && result.closed).toBe(false);
+    expect(result.ok && result.points).toHaveLength(3);
+  });
+
+  it('rejects curves', () => {
+    const result = extractPolygon([
+      move(0, 0),
+      {
+        command: 'curve-to',
+        params: { x: 10, y: 10, c1x: 5, c1y: 0, c2x: 10, c2y: 5 },
+      },
+    ]);
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.error).toContain('straight lines');
+  });
+
+  it('rejects multiple subpaths', () => {
+    const result = extractPolygon([move(0, 0), line(10, 0), move(20, 20)]);
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.error).toContain('multi-part');
+  });
+
+  it('skips consecutive duplicate points', () => {
+    const result = extractPolygon([
+      move(0, 0),
+      line(0, 0),
+      line(10, 0),
+      line(10, 0),
+      line(10, 10),
+      { command: 'close-path' },
+    ]);
+    expect(result.ok && result.points).toEqual([
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 10 },
+    ]);
+  });
+});
+
+describe('chamferPolygon', () => {
+  const pt = (x: number, y: number) => ({ x, y });
+
+  it('chamfers all four corners of a closed square', () => {
+    const commands = chamferPolygon(
+      [pt(0, 0), pt(100, 0), pt(100, 100), pt(0, 100)],
+      true,
+      10,
+    );
+    expect(commands).toHaveLength(9);
+    expect(commands[0]?.command).toBe('move-to');
+    expect(commands[8]?.command).toBe('close-path');
+    const xs = commands
+      .slice(0, 8)
+      .map((c) => c.params?.x)
+      .sort((a, b) => (a ?? 0) - (b ?? 0));
+    expect(xs).toEqual([0, 0, 10, 10, 90, 90, 100, 100]);
+  });
+
+  it('leaves open-path endpoints untouched and chamfers the middle', () => {
+    const commands = chamferPolygon(
+      [pt(0, 0), pt(50, 0), pt(50, 50)],
+      false,
+      10,
+    );
+    expect(commands.map((c) => [c.params?.x, c.params?.y])).toEqual([
+      [0, 0],
+      [40, 0],
+      [50, 10],
+      [50, 50],
+    ]);
+    expect(commands.every((c) => c.command !== 'close-path')).toBe(true);
+  });
+
+  it('caps cuts on short edges so neighbouring chamfers never overlap', () => {
+    // right edge is only 4 long -> each of its vertices may take at most 2
+    const commands = chamferPolygon(
+      [pt(0, 0), pt(100, 0), pt(100, 4), pt(0, 10)],
+      true,
+      50,
+    );
+    const points = commands
+      .filter((c) => c.command !== 'close-path')
+      .map((c) => [c.params?.x, c.params?.y]);
+    expect(points).toContainEqual([50, 0]); // top edge halved
+    expect(points).toContainEqual([100, 2]); // short right edge, both ends capped at 2
+    expect(points).toContainEqual([0, 5]); // left edge halved
+    // duplicate chamfer points collapse, so 4 corners -> 5 distinct points
+    expect(points).toHaveLength(5);
+  });
+
+  it('returns the plain polygon when cut is zero', () => {
+    const original = [pt(0, 0), pt(10, 0), pt(10, 10)];
+    const commands = chamferPolygon(original, true, 0);
+    expect(commands).toEqual(polygonCommands(original, true));
+  });
+
+  it('stays a valid closed polygon when the cut exceeds every edge', () => {
+    // with overtight corners the chamfers meet at the edge midpoints and
+    // the triangle collapses to its medial triangle — still valid geometry
+    const commands = chamferPolygon(
+      [pt(0, 0), pt(20, 0), pt(10, 18)],
+      true,
+      100,
+    );
+    expect(commands[0]?.command).toBe('move-to');
+    expect(commands[commands.length - 1]?.command).toBe('close-path');
+    expect(commands.length).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe('mapPointsToBounds', () => {
+  it('translates without scaling when only the origin moves', () => {
+    const mapped = mapPointsToBounds(
+      [
+        [10, 10],
+        [90, 10],
+        [90, 50],
+      ],
+      { x: 0, y: 0, width: 100, height: 60 },
+      { x: 200, y: 100, width: 100, height: 60 },
+    );
+    expect(mapped).toEqual([
+      { x: 210, y: 110 },
+      { x: 290, y: 110 },
+      { x: 290, y: 150 },
+    ]);
+  });
+
+  it('scales proportionally on resize', () => {
+    const mapped = mapPointsToBounds(
+      [
+        [0, 0],
+        [100, 60],
+      ],
+      { x: 0, y: 0, width: 100, height: 60 },
+      { x: 0, y: 0, width: 200, height: 120 },
+    );
+    expect(mapped).toEqual([
+      { x: 0, y: 0 },
+      { x: 200, y: 120 },
+    ]);
   });
 });

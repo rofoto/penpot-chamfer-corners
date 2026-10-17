@@ -166,6 +166,20 @@ input[type='number']:disabled {
   margin-top: 10px;
 }
 
+.uniform-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.uniform-row input {
+  width: 96px;
+}
+
 button.small {
   padding: 3px 10px;
   font-weight: 500;

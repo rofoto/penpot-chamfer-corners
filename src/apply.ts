@@ -1,9 +1,19 @@
 import type { Board, Path, Rectangle, Shape } from '@penpot/plugin-types';
-import type { ChamferData, Cuts, FrameBgData } from './model';
+import type {
+  ChamferData,
+  Cuts,
+  FrameBgData,
+  PathChamferData,
+  RectChamferData,
+} from './model';
 import {
   chamferCommands,
+  chamferPolygon,
   clampCuts,
   commandsSignature,
+  extractPolygon,
+  mapPointsToBounds,
+  polygonCommands,
   sameCommands,
 } from './geometry';
 
@@ -80,8 +90,14 @@ export interface ApplyOutcome {
   messages: string[];
 }
 
-export function applyToShape(shape: Shape, cuts: Cuts): ApplyOutcome {
-  if (Math.abs(shape.rotation) > 0.01) {
+export function applyToShape(
+  shape: Shape,
+  cuts: Cuts,
+  uniformCut = cuts.tl,
+): ApplyOutcome {
+  // arbitrary paths are chamfered in absolute page space, so rotation
+  // does not affect the result
+  if (shape.type !== 'path' && Math.abs(shape.rotation) > 0.01) {
     return {
       shape,
       ok: false,
@@ -109,7 +125,7 @@ export function applyToShape(shape: Shape, cuts: Cuts): ApplyOutcome {
     case 'rectangle':
       return applyRect(shape as Rectangle, cuts);
     case 'path':
-      return applyExistingPath(shape as Path, cuts);
+      return applyPath(shape as Path, cuts, uniformCut);
     case 'board':
       return applyBoard(shape as Board, cuts);
     default:
@@ -117,10 +133,82 @@ export function applyToShape(shape: Shape, cuts: Cuts): ApplyOutcome {
         shape,
         ok: false,
         messages: [
-          `“${shape.name}” (${shape.type}) — only rectangles, boards and chamfered paths are supported`,
+          `“${shape.name}” (${shape.type}) — only rectangles, boards and paths are supported`,
         ],
       };
   }
+}
+
+function applyPath(path: Path, cuts: Cuts, uniformCut: number): ApplyOutcome {
+  const data = readChamfer(path);
+  if (data?.kind === 'frame-bg') {
+    return {
+      shape: path,
+      ok: false,
+      messages: [`“${path.name}” is a chamfer background — select its board instead`],
+    };
+  }
+  if (data?.kind === 'rect') {
+    return applyExistingPath(path, cuts, data);
+  }
+  if (data?.kind === 'path') {
+    return applyExistingArbitraryPath(path, data, uniformCut);
+  }
+  return applyArbitraryPath(path, uniformCut);
+}
+
+function applyArbitraryPath(path: Path, uniformCut: number): ApplyOutcome {
+  const extracted = extractPolygon(path.commands);
+  if (!extracted.ok) {
+    return { shape: path, ok: false, messages: [`“${path.name}”: ${extracted.error}`] };
+  }
+  const cut = Number.isFinite(uniformCut) && uniformCut > 0 ? uniformCut : 0;
+  if (cut === 0) {
+    return {
+      shape: path,
+      ok: false,
+      messages: [`“${path.name}”: the uniform cut is 0 — nothing to chamfer`],
+    };
+  }
+  const origBounds = boundsOf(path);
+  const commands = chamferPolygon(extracted.points, extracted.closed, cut);
+  path.commands = commands;
+  writeChamfer(path, {
+    v: 1,
+    kind: 'path',
+    cut,
+    pts: extracted.points.map((p) => [p.x, p.y] as [number, number]),
+    closed: extracted.closed,
+    origBounds,
+    sig: commandsSignature(commands),
+  });
+  const shapeWord = extracted.closed ? 'closed' : 'open';
+  return {
+    shape: path,
+    ok: true,
+    messages: [
+      `chamfered ${shapeWord} path “${path.name}” (${extracted.points.length} corners, cut ${cut}px)`,
+    ],
+  };
+}
+
+function applyExistingArbitraryPath(
+  path: Path,
+  data: PathChamferData,
+  uniformCut: number,
+): ApplyOutcome {
+  const manualEdit =
+    data.sig !== undefined && data.sig !== commandsSignature(path.commands);
+  const cut = Number.isFinite(uniformCut) && uniformCut > 0 ? uniformCut : 0;
+  const points = data.pts.map(([x, y]) => ({ x, y }));
+  const commands = chamferPolygon(points, data.closed, cut);
+  path.commands = commands;
+  writeChamfer(path, { ...data, cut, sig: commandsSignature(commands) });
+  const messages = [`updated chamfer on path “${path.name}” (cut ${cut}px)`];
+  if (manualEdit) {
+    messages.push(`manual path edits on “${path.name}” were overwritten`);
+  }
+  return { shape: path, ok: true, messages };
 }
 
 function clampNotice(requested: Cuts, clamped: Cuts): string | null {
@@ -151,22 +239,11 @@ function applyRect(rect: Rectangle, cuts: Cuts): ApplyOutcome {
   return { shape: flattened, ok: true, messages };
 }
 
-function applyExistingPath(path: Path, cuts: Cuts): ApplyOutcome {
-  const data = readChamfer(path);
-  if (!data) {
-    return {
-      shape: path,
-      ok: false,
-      messages: [`“${path.name}” is a plain path — select a rectangle or board instead`],
-    };
-  }
-  if (data.kind !== 'rect') {
-    return {
-      shape: path,
-      ok: false,
-      messages: [`“${path.name}” is a chamfer background — select its board instead`],
-    };
-  }
+function applyExistingPath(
+  path: Path,
+  cuts: Cuts,
+  data: RectChamferData,
+): ApplyOutcome {
   const manualEdit =
     data.sig !== undefined && data.sig !== commandsSignature(path.commands);
   const clamped = clampCuts(path.bounds.width, path.bounds.height, cuts);
@@ -290,7 +367,7 @@ export function duplicateForChamfer(
   }
   if (shape.type === 'path') {
     const data = readChamfer(shape);
-    if (!data || data.kind !== 'rect') {
+    if (!data || (data.kind !== 'rect' && data.kind !== 'path')) {
       return {
         error: `“${shape.name}” is a plain path — duplicate mode supports rectangles and chamfered paths`,
       };
@@ -357,6 +434,35 @@ export function removeFromShape(shape: Shape): RemoveOutcome {
         ok: true,
         messages: [
           `recreated “${rect.name}” as a rectangle (new id — flatten had already re-keyed it)`,
+        ],
+      };
+    }
+    case 'path': {
+      if (shape.type !== 'path') {
+        return {
+          shape,
+          ok: false,
+          messages: [`“${shape.name}” is not a chamfered path`],
+        };
+      }
+      const path = shape;
+      const original = penpot.createPath();
+      original.name = path.name;
+      const points = data.pts.map(([x, y]) => ({ x, y }));
+      const parent = path.parent;
+      if (parent && 'insertChild' in parent) {
+        parent.insertChild(path.parentIndex, original);
+      }
+      if (Array.isArray(path.fills)) original.fills = [...path.fills];
+      original.strokes = [...path.strokes];
+      original.opacity = path.opacity;
+      original.commands = polygonCommands(points, data.closed);
+      if ('remove' in path) path.remove();
+      return {
+        shape: original,
+        ok: true,
+        messages: [
+          `restored “${original.name}” to its original outline (new id)`,
         ],
       };
     }
@@ -433,6 +539,26 @@ export function regenerateIfOwner(shape: Shape): boolean {
         cuts: data.cuts,
         sig: commandsSignature(expected),
       });
+    } finally {
+      penpot.history.undoBlockFinish(block);
+    }
+    return true;
+  }
+
+  if (data.kind === 'path' && shape.type === 'path') {
+    if (!data.sig) return false;
+    if (commandsSignature(shape.commands) !== data.sig) return false;
+    const mapped = mapPointsToBounds(
+      data.pts,
+      data.origBounds,
+      boundsOf(shape),
+    );
+    const expected = chamferPolygon(mapped, data.closed, data.cut);
+    if (sameCommands(shape.commands, expected)) return false;
+    const block = penpot.history.undoBlockBegin();
+    try {
+      shape.commands = expected;
+      writeChamfer(shape, { ...data, sig: commandsSignature(expected) });
     } finally {
       penpot.history.undoBlockFinish(block);
     }

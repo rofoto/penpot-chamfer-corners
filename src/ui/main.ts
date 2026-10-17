@@ -30,6 +30,8 @@ const cutInputs: Record<CornerKey, HTMLInputElement | null> = {
   bl: document.querySelector<HTMLInputElement>('#cut-bl'),
 };
 
+const uniformInput = document.querySelector<HTMLInputElement>('#cut-uniform');
+
 const enableInputs: Record<CornerKey, HTMLInputElement | null> = {
   tl: document.querySelector<HTMLInputElement>('#en-tl'),
   tr: document.querySelector<HTMLInputElement>('#en-tr'),
@@ -68,10 +70,16 @@ function setInputs(cuts: Cuts, enableNonZero = false): void {
   syncEnabled();
 }
 
+function currentUniform(): number {
+  const value = Number(uniformInput?.value ?? 0);
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
 /* ---------------- state persistence ---------------- */
 
 interface UiState {
   cuts: Cuts;
+  uniform: number;
   enabled: Record<CornerKey, boolean>;
   duplicate: boolean;
   live: boolean;
@@ -80,6 +88,7 @@ interface UiState {
 function readState(): UiState {
   return {
     cuts: currentCuts(),
+    uniform: currentUniform(),
     enabled: {
       tl: isEnabled('tl'),
       tr: isEnabled('tr'),
@@ -109,6 +118,9 @@ function restoreState(): void {
     return;
   }
   if (state.cuts) setInputs(state.cuts);
+  if (state.uniform !== undefined && uniformInput) {
+    uniformInput.value = String(state.uniform);
+  }
   for (const key of CORNERS) {
     if (state.enabled && enableInputs[key]) {
       enableInputs[key].checked = state.enabled[key] ?? true;
@@ -130,7 +142,7 @@ function scheduleLive(): void {
   if (!liveEl?.checked || duplicateEl?.checked) return;
   window.clearTimeout(liveTimer);
   liveTimer = window.setTimeout(() => {
-    post({ type: 'apply', cuts: currentCuts() });
+    post({ type: 'apply', cuts: currentCuts(), uniform: currentUniform() });
   }, 400);
 }
 
@@ -143,6 +155,9 @@ function describeChamfer(shape: SelectionInfo): string {
     return shape.bgOrphaned
       ? ' · chamfer background (orphaned)'
       : ' · chamfer background';
+  }
+  if (data.kind === 'path') {
+    return ` · chamfer path cut=${data.cut}${data.closed ? '' : ' (open)'}`;
   }
   const cuts = data.cuts;
   return ` · chamfer ${data.kind} tl=${cuts.tl} tr=${cuts.tr} br=${cuts.br} bl=${cuts.bl}`;
@@ -174,7 +189,10 @@ function renderSelection(selection: SelectionInfo[]): void {
 
   if (selection.length === 1) {
     const data = selection[0]?.chamfer;
-    if (data && data.kind !== 'frame-bg') {
+    if (data?.kind === 'path') {
+      if (uniformInput) uniformInput.value = String(data.cut);
+      persistState();
+    } else if (data && data.kind !== 'frame-bg') {
       setInputs(data.cuts, true);
       persistState();
     }
@@ -233,6 +251,7 @@ applyButton?.addEventListener('click', () => {
   post({
     type: 'apply',
     cuts: currentCuts(),
+    uniform: currentUniform(),
     duplicate: duplicateEl?.checked ?? false,
   });
 });
@@ -246,13 +265,13 @@ smokeButton?.addEventListener('click', () => {
   post({ type: 'run-smoke' });
 });
 
-for (const key of CORNERS) {
-  const input = cutInputs[key];
-  input?.addEventListener('input', () => {
+function attachNumberBehaviour(input: HTMLInputElement | null): void {
+  if (!input) return;
+  input.addEventListener('input', () => {
     persistState();
     scheduleLive();
   });
-  input?.addEventListener(
+  input.addEventListener(
     'wheel',
     (event) => {
       if (document.activeElement !== input) return;
@@ -264,12 +283,18 @@ for (const key of CORNERS) {
     },
     { passive: false },
   );
+}
+
+for (const key of CORNERS) {
+  attachNumberBehaviour(cutInputs[key]);
   enableInputs[key]?.addEventListener('change', () => {
     syncEnabled();
     persistState();
     scheduleLive();
   });
 }
+
+attachNumberBehaviour(uniformInput);
 
 for (const button of document.querySelectorAll<HTMLButtonElement>('[data-preset]')) {
   button.addEventListener('click', () => {
@@ -279,6 +304,7 @@ for (const button of document.querySelectorAll<HTMLButtonElement>('[data-preset]
         cutInputs[key].value = String(value);
       }
     }
+    if (uniformInput) uniformInput.value = String(value);
     persistState();
     scheduleLive();
   });

@@ -79,7 +79,7 @@ penpot.ui.onMessage((raw: unknown) => {
       void runSmoke();
       break;
     case 'apply':
-      handleApply(message.cuts, message.duplicate === true);
+      handleApply(message.cuts, message.duplicate === true, message.uniform);
       break;
     case 'remove':
       handleRemove();
@@ -94,7 +94,7 @@ function sendNotice(
   send({ type: 'notice', level, text: lines.join('\n') });
 }
 
-function handleApply(cuts: Cuts, duplicate: boolean): void {
+function handleApply(cuts: Cuts, duplicate: boolean, uniform?: number): void {
   const selection = penpot.selection;
   if (selection.length === 0) {
     sendNotice('info', ['Nothing selected']);
@@ -115,7 +115,7 @@ function handleApply(cuts: Cuts, duplicate: boolean): void {
         }
         target = copied.shape;
       }
-      const outcome = applyToShape(target, cuts);
+      const outcome = applyToShape(target, cuts, uniform ?? cuts.tl);
       messages.push(...outcome.messages);
       if (outcome.ok) {
         anyOk = true;
